@@ -4,6 +4,8 @@ A runnable demo of a PackServe-style LLM serving architecture (proposal2.md): a 
 
 **Everything GPU-related here is SIMULATED.** The account cannot create GPU Linodes (see [docs/validity-review.md](docs/validity-review.md)), so replicas are processes that emit lorem tokens with latencies from the PackServe latency model. Numbers from this stack show scheduler behavior, not GPU performance or savings.
 
+**Presentation:** [slides](https://docs.google.com/presentation/d/1B0_vUVTBVqOIXkVte-NNeHxRxxxTb7mthFyhInxrKUg/edit?usp=sharing). **Demo walkthrough:** [DEMO.md](DEMO.md).
+
 ## Quickstart
 
 ```bash
