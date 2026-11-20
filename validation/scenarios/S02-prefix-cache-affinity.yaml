@@ -1,0 +1,24 @@
+id: S02-prefix-cache-affinity
+title: Requests sharing a long prefix are routed to the replica that caches it
+intent: >
+  One replica (the LAST qwen replica, so first-in-list tie-breaking cannot explain the result) is warmed
+  directly with a 32-block (2048-token) prefix. After heartbeat/metadata sync the gateway must see its cached
+  block hashes, so every later request with the same prefix goes to that replica (cache_hit_tokens close to
+  the prefix length) even though all replicas are idle. Only the cache holder is within the recompute budget
+  (others have ratio 1.0 > eta 0.5), so candidates budget=1.
+tags: [cache, core]
+requires: {qwen_replicas: 2}
+steps:
+  - {action: direct_prime, replica: qlast, prompt: {kind: prefix_only, prefix_blocks: 32, seed: P}}
+  - action: wait
+    name: gateway-sees-cache
+    until: {service: metadata, url_path: /v1/replicas, path: "[id={{ qlast.id }}].cached_block_hashes|len", op: ">=", value: 31, timeout_s: 15}
+  - {action: wait, seconds: 1.0}
+  - {action: traffic, name: shared, tenant: batch, model: qwen3-8-27b, count: 5, concurrency: 1, max_tokens: 8,
+     prompt: {kind: shared_prefix, prefix_blocks: 32, suffix_chars: 80, seed: P}}
+  - action: check
+    checks:
+      - {type: in_set, name: all-requests-go-to-cache-holder, on: shared, field: replica, values: ["{{ qlast.id }}"]}
+      - {type: all, name: reason-packed, on: shared, expect: {route: replica, reason: packed}}
+      - {type: stat, name: cache-hit-covers-prefix, on: shared, field: cache_hit_tokens, agg: min, op: ">=", value: 1900}
+      - {type: all, name: budget-filter-leaves-only-holder, on: shared, expect: {cand_budget: 1}}

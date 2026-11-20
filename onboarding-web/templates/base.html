@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}PackServe on Akamai Cloud{% endblock %}</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body data-page="{{ page }}" data-gateway="{{ gateway_url }}">
+<a class="skip" href="#main">Skip to content</a>
+<header class="top">
+  <a class="brand" href="/">PackServe <span>on Akamai Cloud</span></a>
+  <nav aria-label="Main">
+    {% for href, label, key in [("/", "Overview", "landing"), ("/use-cases", "Use cases", "use_cases"), ("/plan", "Plan builder", "plan"), ("/signup", "Sign up", "signup"), ("/playground", "Playground", "playground")] %}
+    <a href="{{ href }}" {% if page == key %}aria-current="page"{% endif %}>{{ label }}</a>
+    {% endfor %}
+  </nav>
+</header>
+<div id="banner" class="banner" role="status" hidden></div>
+<main id="main" tabindex="-1">
+{% block content %}{% endblock %}
+</main>
+<footer class="foot">
+  <p>Hackathon demo. GPU replicas are <strong>SIMULATED</strong> in this build. Prices are from Akamai's public GPU price list; the serverless price is an unpublished assumption.</p>
+</footer>
+<script src="/static/app.js"></script>
+</body>
+</html>

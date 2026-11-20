@@ -1,0 +1,19 @@
+id: S15-auth-401
+title: Missing or invalid credentials get 401 unauthorized
+intent: >
+  No Authorization header, an unknown bearer key and a non-bearer scheme must each return HTTP 401 with
+  route=rejected, reason=unauthorized and no replica header (and must never reach a replica or serverless).
+  A valid seed key on the same model still works.
+tags: [auth, core]
+requires: {qwen_replicas: 1}
+steps:
+  - {action: traffic, name: no-auth, model: qwen3-8-27b, raw_auth: "", count: 2, max_tokens: 4}
+  - {action: traffic, name: bad-key, model: qwen3-8-27b, raw_auth: "Bearer ps_definitely_not_a_key", count: 2, max_tokens: 4}
+  - {action: traffic, name: basic-scheme, model: qwen3-8-27b, raw_auth: "Basic dXNlcjpwYXNz", count: 2, max_tokens: 4}
+  - {action: traffic, name: valid, tenant: interactive, model: qwen3-8-27b, count: 1, max_tokens: 4}
+  - action: check
+    checks:
+      - {type: all, name: 401-unauthorized-no-auth, on: no-auth, expect: {status: 401, route: rejected, reason: unauthorized, replica: null}}
+      - {type: all, name: 401-unauthorized-bad-key, on: bad-key, expect: {status: 401, route: rejected, reason: unauthorized, replica: null}}
+      - {type: all, name: 401-unauthorized-basic, on: basic-scheme, expect: {status: 401, route: rejected, reason: unauthorized, replica: null}}
+      - {type: all, name: valid-key-works, on: valid, expect: {status: 200, route: replica, complete: true}}

@@ -1,0 +1,21 @@
+id: S08-reject-pool-only-model
+title: packserve-large-230b is pool-only - never overflows; rejected pool_only_model when its pool is full
+intent: >
+  The large model is not in the serverless catalog (burst_eligible=false). With the large pool idle, requests
+  route normally. Once every large replica is filled to max_running, even a burst-enabled tenant (t-large)
+  must get route=rejected, reason=pool_only_model, 429 + Retry-After, never route=overflow, and the serverless
+  mock must not be called.
+tags: [reject, overflow, core]
+requires: {large_replicas: 1}
+steps:
+  - {action: serverless, snapshot: before}
+  - {action: traffic, name: idle-pool, tenant: large, model: packserve-large-230b, count: 2, concurrency: 1, max_tokens: 8}
+  - {action: direct_load, name: fill, target: large, count: max, max_tokens: 500, settle_s: 3}
+  - {action: traffic, name: full-pool, tenant: large, model: packserve-large-230b, count: 3, concurrency: 1, max_tokens: 8}
+  - {action: serverless, snapshot: after}
+  - action: check
+    checks:
+      - {type: all, name: idle-pool-routes-to-large-replica, on: idle-pool, expect: {route: replica, reason: packed}}
+      - {type: all, name: full-pool-rejected-pool-only, on: full-pool, expect: {route: rejected, reason: pool_only_model, status: 429, retry_after: {">=": 0}}}
+      - {type: none, name: never-overflows, on: "*", where: {route: overflow}}
+      - {type: fact, name: serverless-not-called, path: after.json, op: "==", value: "{{ fact.before.json }}", severity: warn}

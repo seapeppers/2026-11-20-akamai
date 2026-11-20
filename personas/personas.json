@@ -1,0 +1,273 @@
+[
+  {
+    "id": "agentic-coding-assistant",
+    "name": "Dana, Platform Lead at an AI coding-assistant startup",
+    "company_archetype": "Series B developer-tools company with an IDE/CLI coding agent, ~40k weekly active developers",
+    "industry": "Developer tools",
+    "use_case": "Agentic code editing: each turn re-sends a long, mostly identical context (system prompt, tool definitions, repo map, prior tool calls) and generates a short diff or tool call.",
+    "real_world_examples": [
+      {
+        "org": "Cursor (Anysphere)",
+        "summary": "Pragmatic Engineer interview coverage: 'billions of code completions, daily', 100x growth in users and load in 12 months, Tab suggestions ideally under a second, inference on cloud GPUs. It does not discuss prefix caching in the visible text.",
+        "source_url": "https://newsletter.pragmaticengineer.com/p/cursor"
+      },
+      {
+        "org": "Manus",
+        "summary": "Secondary summary of Manus' engineering post: KV-cache hit rate is 'the single most important metric for a production agent'; typical task has ~100:1 input-to-output token ratio over ~50 tool calls. Primary post not re-fetched.",
+        "source_url": "https://agentic-ai.readthedocs.io/en/latest/ContextEngineering/manus/"
+      },
+      {
+        "org": "SGLang / RadixAttention",
+        "summary": "Retains KV cache in a radix tree so multi-turn chat and shared system prompts reuse prefix computation; up to 5x throughput claimed vs. baselines on the authors' benchmarks.",
+        "source_url": "https://www.lmsys.org/blog/2024-01-17-sglang/"
+      }
+    ],
+    "traffic_shape": {
+      "baseline_rps": 3,
+      "peak_rps": 12,
+      "peak_pattern": "Weekday business hours (roughly 4x nights/weekends); no sharp spikes",
+      "prompt_tokens_p50": 40000,
+      "output_tokens_p50": 400,
+      "shared_prefix": true
+    },
+    "recommended": {
+      "model": "packserve-large-230b",
+      "tpot_target_ms": 50,
+      "reserved_replicas": 3,
+      "burst_enabled": false
+    },
+    "why_pool": "Input-heavy (~100:1) agent loops with long shared prefixes are where prefix-cache-aware packing helps most; steady daytime baseline justifies reserved GPUs; large coding model that is not in the serverless catalog.",
+    "why_burst": "Not applicable: the 230B-class model is pool-only and never overflows. Daytime growth is handled by pre-scaling the pool on the weekday schedule, not by burst.",
+    "not_a_fit_if": "Product promises sub-second time-to-first-token for inline completions (TTFT can rise under packing), or needs a frontier closed model, or needs P99 TPOT guarantees (PackServe targets median).",
+    "validation_scenario": "S02-prefix-cache-affinity"
+  },
+  {
+    "id": "retail-support-bfcm",
+    "name": "Marcus, Head of CX Engineering at a mid-size online retailer",
+    "company_archetype": "Omnichannel retailer, ~$1.5B GMV, support chatbot deflecting order-status and returns questions",
+    "industry": "E-commerce / retail",
+    "use_case": "Customer-support chat assistant with a long shared system prompt (policies, tone, tool schema) plus per-customer order context; seasonal peak at Black Friday / Cyber Monday.",
+    "real_world_examples": [
+      {
+        "org": "Klarna",
+        "summary": "First month of its OpenAI-powered assistant: 2.3 million conversations, two-thirds of customer-service chats, <2 min resolution vs 11 min, work equal to 700 full-time agents (company-reported).",
+        "source_url": "https://www.klarna.com/international/press/klarna-ai-assistant-handles-two-thirds-of-customer-service-chats-in-its-first-month/"
+      },
+      {
+        "org": "Adobe Analytics",
+        "summary": "Cyber Monday 2025: $14.25B US online spend (+7.1% YoY); $16M/min at 8-10 pm peak; AI-driven traffic to US retail sites +670% on the day.",
+        "source_url": "https://news.adobe.com/news/2025/12/adobe-cyber-monday-hits-record"
+      }
+    ],
+    "traffic_shape": {
+      "baseline_rps": 15,
+      "peak_rps": 90,
+      "peak_pattern": "Black Friday weekend to Cyber Monday, evening-heavy; ~6x baseline for ~30 peak-hours/season; date known a year ahead",
+      "prompt_tokens_p50": 1800,
+      "output_tokens_p50": 250,
+      "shared_prefix": true
+    },
+    "recommended": {
+      "model": "qwen3-8-27b",
+      "tpot_target_ms": 50,
+      "reserved_replicas": 4,
+      "burst_enabled": true
+    },
+    "why_pool": "Always-on support traffic with a large shared system prompt gives a steady, cache-friendly baseline; cost per GPU-hour is predictable and conversation data stays on infrastructure the retailer controls.",
+    "why_burst": "6x peak for a few days a year: reserving for peak wastes ~80% of GPU-hours; the model is in the serverless catalog so overflow gives identical answers while the pool scales up.",
+    "not_a_fit_if": "Peak is sustained for weeks (just reserve it), serverless rate limits turn out to be below the overflow volume, or chat must meet a P99 latency SLA.",
+    "validation_scenario": "S06-overflow-pool-full"
+  },
+  {
+    "id": "legal-contract-extraction",
+    "name": "Priya, Director of Legal Engineering at a mid-market law firm / legal-tech vendor",
+    "company_archetype": "Legal-tech team running contract review and data extraction for M&A diligence",
+    "industry": "Legal services",
+    "use_case": "Extract clauses and structured fields from long contracts and email sets; long document plus a fixed extraction schema/instructions prefix, JSON output.",
+    "real_world_examples": [
+      {
+        "org": "Thomson Reuters CoCounsel (Century Communities case study)",
+        "summary": "Homebuilder legal team uses it for reviewing contracts, summarizing documents, extracting data from large volumes of files; 87 land contracts reviewed in one M&A deal; avoided reading 10,000 emails. Vendor-reported, anecdotal.",
+        "source_url": "https://legal.thomsonreuters.com/en/insights/case-studies/turbocharging-legal-tasks-with-cocounsel-generative-ai"
+      }
+    ],
+    "traffic_shape": {
+      "baseline_rps": 2,
+      "peak_rps": 5,
+      "peak_pattern": "Deal-closing crunches and month-end; batch queues tolerant of seconds of delay",
+      "prompt_tokens_p50": 30000,
+      "output_tokens_p50": 800,
+      "shared_prefix": true
+    },
+    "recommended": {
+      "model": "packserve-large-230b",
+      "tpot_target_ms": 50,
+      "reserved_replicas": 4,
+      "burst_enabled": false
+    },
+    "why_pool": "Confidential client documents argue for dedicated GPUs under the firm's control; extraction quality favors a large model; schema prefix is shared so cache-aware packing helps.",
+    "why_burst": "Not applicable: large model is pool-only. Batch clients should honor 429 + Retry-After and queue; overflow to a smaller model would change answers and is deliberately not offered.",
+    "not_a_fit_if": "Needs a model above the pool's ~230B class, or needs instant interactive latency during peaks without queuing, or requires contractual confidentiality terms Akamai has not published (unverified).",
+    "validation_scenario": "S08-reject-pool-only-model"
+  },
+  {
+    "id": "healthcare-scribe",
+    "name": "Dr. Amara, CMIO at a regional health system",
+    "company_archetype": "Regional health system, ~3,000 clinicians, building an in-house ambient note-drafting service",
+    "industry": "Healthcare",
+    "use_case": "Turn a visit transcript (~20 min) into a draft SOAP note using a fixed template prompt; clinician reviews before signing.",
+    "real_world_examples": [
+      {
+        "org": "Abridge",
+        "summary": "Homepage states 300+ health systems and 53M+ conversations powered each year; e.g. UW Health 800+ providers, 30 min/day documentation time saved; Inova 9,400+ clinicians.",
+        "source_url": "https://www.abridge.com/"
+      }
+    ],
+    "traffic_shape": {
+      "baseline_rps": 1.5,
+      "peak_rps": 5,
+      "peak_pattern": "Clinic hours on weekdays, bump at late morning and end of day; very quiet overnight",
+      "prompt_tokens_p50": 6000,
+      "output_tokens_p50": 700,
+      "shared_prefix": true
+    },
+    "recommended": {
+      "model": "qwen3-8-27b",
+      "tpot_target_ms": 50,
+      "reserved_replicas": 2,
+      "burst_enabled": false
+    },
+    "why_pool": "Predictable diurnal clinic load fits a reserved pool; PHI data-control preference; note generation is not latency-critical per token so 50 ms is plenty.",
+    "why_burst": "Burst is eligible by model but disabled by choice: sending PHI to a shared serverless pool needs compliance terms we cannot verify. Diurnal peaks are covered by scheduled scale-up.",
+    "not_a_fit_if": "Compliance (e.g. HIPAA BAA) terms for Akamai GPU Linodes are not in place (unverified here), or clinicians need live in-visit suggestions with strict real-time latency.",
+    "validation_scenario": "S07-reject-burst-disabled"
+  },
+  {
+    "id": "game-npc-launch",
+    "name": "Jo, Technical Director at a mid-size game studio",
+    "company_archetype": "Studio shipping a live-service game with LLM-driven NPC dialogue",
+    "industry": "Gaming",
+    "use_case": "Short, in-character NPC replies generated per player utterance; each NPC has a fixed persona/world-state prefix.",
+    "real_world_examples": [
+      {
+        "org": "Ubisoft NEO NPC (prototype)",
+        "summary": "R&D prototype with Nvidia Audio2Face and Inworld's LLM, human-written backstories, guardrails; Ubisoft says it is only a prototype and gives no latency or scale numbers.",
+        "source_url": "https://news.ubisoft.com/en-us/article/5qXdxhshJBXoanFZApdG3L/how-ubisofts-new-generative-ai-prototype-changes-the-narrative-for-npcs"
+      }
+    ],
+    "traffic_shape": {
+      "baseline_rps": 20,
+      "peak_rps": 300,
+      "peak_pattern": "Launch weekend and content drops, ~15x baseline for ~12 peak-hours per drop; dates known weeks ahead (assumed)",
+      "prompt_tokens_p50": 1500,
+      "output_tokens_p50": 60,
+      "shared_prefix": true
+    },
+    "recommended": {
+      "model": "gemma-4-26b-a4b-it",
+      "tpot_target_ms": 30,
+      "reserved_replicas": 2,
+      "burst_enabled": true
+    },
+    "why_pool": "Steady live-ops traffic with persona prefixes reused across a player's turns; 30 ms tier keeps short lines feeling instant.",
+    "why_burst": "15x launch spikes make peak reservation wasteful; gemma is in the serverless catalog, so overflow covers surprise load beyond the pre-scaled pool.",
+    "not_a_fit_if": "Experience needs voice-to-voice round trips under ~1 s end to end, or serverless cannot hold a 30 ms TPOT (unpublished) and the studio cannot tolerate slower overflow.",
+    "validation_scenario": "S04-tpot-30-vs-50"
+  },
+  {
+    "id": "live-event-recaps",
+    "name": "Sam, Head of Product at a streaming/media company",
+    "company_archetype": "Sports and news streamer generating personalized summaries and highlight scripts after live events",
+    "industry": "Media",
+    "use_case": "After each live event, generate personalized text recaps per viewer from event metadata and clip descriptions plus a viewer profile.",
+    "real_world_examples": [
+      {
+        "org": "NBCUniversal / Peacock",
+        "summary": "Paris 2024 personalized recaps: nearly 7 million variants possible, built from hundreds of NBC Sports clips a day, ~10 min playlists, 5,000 hours of coverage; NBCU editors reviewed content. (Peacock's underlying stack is not described in this source.)",
+        "source_url": "https://www.nbcuniversal.com/article/peacock-unveils-personalized-olympic-recaps-featuring-voice-legendary-sports-announcer-al-michaels"
+      }
+    ],
+    "traffic_shape": {
+      "baseline_rps": 2,
+      "peak_rps": 80,
+      "peak_pattern": "Spike for ~2 h after each major event (about 8 per month); 40x baseline; schedule is public",
+      "prompt_tokens_p50": 4000,
+      "output_tokens_p50": 400,
+      "shared_prefix": true
+    },
+    "recommended": {
+      "model": "qwen3-8-27b",
+      "tpot_target_ms": 50,
+      "reserved_replicas": 2,
+      "burst_enabled": true
+    },
+    "why_pool": "Small steady baseline (catalog, evergreen content) on reserved GPUs with shared event-context prefix across viewers.",
+    "why_burst": "40x peak lasting two hours is the textbook overflow case; hourly GPU billing makes short pre-scales costly and slow, and identical-model overflow keeps recap quality consistent.",
+    "not_a_fit_if": "Recaps must arrive within seconds of the final whistle at full volume and serverless rate limits (unpublished) cannot absorb 80 rps; or recap quality requires a model not in the serverless catalog.",
+    "validation_scenario": "S06-overflow-pool-full"
+  },
+  {
+    "id": "realtime-voice-agent",
+    "name": "Kai, CTO at a voice-AI contact-center startup (POOR FIT)",
+    "company_archetype": "Seed-stage voice agent vendor with contractual latency SLAs",
+    "industry": "Contact center / voice AI",
+    "use_case": "Spoken conversations where every turn must start speaking within a hard latency budget; SLA written on P99.",
+    "real_world_examples": [
+      {
+        "org": "PackServe paper (as summarized in docs/validity-review.md)",
+        "summary": "Under a 50 ms median TPOT target, request-level P90 TPOT was about 80 ms (~1.6x), and production mean TTFT rose 66.4%; the paper says it is not a latency guarantee. No customer is claimed.",
+        "source_url": "https://arxiv.org/abs/2609.33224"
+      }
+    ],
+    "traffic_shape": {
+      "baseline_rps": 10,
+      "peak_rps": 30,
+      "peak_pattern": "Business hours, mild spikes",
+      "prompt_tokens_p50": 1200,
+      "output_tokens_p50": 80,
+      "shared_prefix": true
+    },
+    "recommended": {
+      "model": "qwen3-8-27b",
+      "tpot_target_ms": 30,
+      "reserved_replicas": 2,
+      "burst_enabled": false
+    },
+    "why_pool": "Short prompts with a shared prefix would pack, but packing deliberately fills replicas close to the target, which hurts tails and TTFT.",
+    "why_burst": "Serverless cold starts and unpublished rate limits make overflow unpredictable for a P99 SLA; burst is off.",
+    "not_a_fit_if": "ALWAYS: the SLA is on P99 or time-to-first-token. This service targets median TPOT only. Use over-provisioned dedicated replicas without packing, or another vendor.",
+    "validation_scenario": "S05-fallback-all-exceed-tpot"
+  },
+  {
+    "id": "homework-helper-startup",
+    "name": "Lee, solo founder of a homework-help app (POOR FIT)",
+    "company_archetype": "Two-person startup, student Q&A app with exam-season spikes",
+    "industry": "Education",
+    "use_case": "Students ask homework questions; short explanations generated. Usage is tiny most of the year and surges at finals.",
+    "real_world_examples": [
+      {
+        "org": "Khan Academy / Google.org (Khanmigo)",
+        "summary": "Shows AI tutoring tools being timed to the school year; the source gives no usage numbers. The exam-season spike here is our extrapolation, not a cited fact.",
+        "source_url": "https://blog.google/products-and-platforms/products/education/khan-academy-back-to-school/"
+      }
+    ],
+    "traffic_shape": {
+      "baseline_rps": 0.2,
+      "peak_rps": 8,
+      "peak_pattern": "Finals weeks (~20 peak-hours/month in season); near zero otherwise",
+      "prompt_tokens_p50": 800,
+      "output_tokens_p50": 500,
+      "shared_prefix": false
+    },
+    "recommended": {
+      "model": "qwen3-8-27b",
+      "tpot_target_ms": 50,
+      "reserved_replicas": 1,
+      "burst_enabled": true
+    },
+    "why_pool": "Weak: one replica is $4,320/month for 0.2 rps; no prefix sharing to exploit.",
+    "why_burst": "The workload is better served entirely by serverless per-token billing; the pool adds cost with no benefit.",
+    "not_a_fit_if": "Average utilization of even one replica is below roughly 20-30%. Use Akamai Inference serverless directly until sustained volume appears.",
+    "validation_scenario": "S06-overflow-pool-full"
+  }
+]

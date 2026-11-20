@@ -1,0 +1,24 @@
+id: S12-scaleup-routable
+title: Autoscaler scale-up - the new replica registers and becomes routable
+intent: >
+  With the qwen pool filled (requests overflow to serverless), the autoscaler is asked for N+1 replicas via
+  POST /admin/scale. Once the new replica is registered and healthy, the next requests must be routed to the
+  NEW replica (route=replica, reason=packed) instead of overflowing - proving it is visible to the gateway
+  and admissible. The new replica may be a spawned one or a revived drained/held one; either way it must not have been routable (live) before. (Autoscaler is paused/restored by the runner; the manual scale override is used.)
+tags: [autoscaler, core]
+requires: {qwen_replicas: 1, autoscaler: true}
+steps:
+  # shared stacks drift (auto-scaling leaves the pool near its max); start from a small, known pool so N+1 fits
+  - {action: autoscaler, op: scale, replicas: "{{ min(n_qwen, 3) }}", rebind: true, wait_s: 120}
+  - {action: serverless, config: {cold_start_ms: 100}}
+  - {action: direct_load, name: fill, target: qwen, count: max, max_tokens: 1500, settle_s: 3}
+  - {action: traffic, name: before, tenant: interactive, model: qwen3-8-27b, count: 1, max_tokens: 8}
+  - {action: autoscaler, op: scale, replicas: "{{ n_qwen + 1 }}", rebind: true, wait_s: 120}
+  - {action: wait, seconds: 3}
+  - {action: traffic, name: after, tenant: interactive, model: qwen3-8-27b, count: 3, concurrency: 1, max_tokens: 8}
+  - action: check
+    checks:
+      - {type: fact, name: exactly-one-new-replica, path: "scale.new_ids|len", op: "==", value: 1}
+      - {type: fact, name: new-replica-was-not-routable-before, path: scale.old_ids, op: not_contains, value: "{{ fact.scale.new_ids[0] }}"}
+      - {type: all, name: before-scale-up-overflowed, on: before, expect: {route: overflow, reason: overflow}}
+      - {type: all, name: after-scale-up-routed-to-new-replica, on: after, expect: {route: replica, reason: packed, replica: "{{ fact.scale.new_ids[0] }}"}}

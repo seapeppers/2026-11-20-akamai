@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Playground - PackServe{% endblock %}
+{% block content %}
+<section class="wrap">
+  <h1>Playground</h1>
+  <div class="cols">
+    <div class="card">
+      <label for="pg-key">API key</label>
+      <input id="pg-key" type="password" autocomplete="off" placeholder="ps_...">
+      <p class="hint">Seed demo keys (not secrets): <button type="button" class="link" data-key="ps_demo_interactive">interactive</button>, <button type="button" class="link" data-key="ps_demo_batch">batch</button>, <button type="button" class="link" data-key="ps_demo_large">large-model</button></p>
+      <label for="pg-model">Model</label><select id="pg-model"></select>
+      <label for="pg-prompt">Prompt</label>
+      <textarea id="pg-prompt" rows="4">Explain in two sentences why packing requests onto fewer GPUs can lower cost.</textarea>
+      <button class="btn primary" id="pg-send" type="button">Send</button>
+      <h2>Reply</h2>
+      <pre id="pg-out" class="reply" aria-live="polite" tabindex="0"></pre>
+    </div>
+    <div>
+      <section class="card" aria-labelledby="route-h">
+        <h2 id="route-h">Routing</h2>
+        <div id="route-badge" class="badge none">No request yet</div>
+        <dl id="route-details" class="kv"></dl>
+      </section>
+      <section class="card" aria-labelledby="burst-h">
+        <h2 id="burst-h">Burst test</h2>
+        <label for="burst-n">Concurrent requests</label>
+        <input id="burst-n" type="number" min="1" max="400" value="250">
+        <button class="btn" id="burst-go" type="button">Fire burst</button>
+        <div id="tally" class="tally" aria-live="polite">
+          <div><span id="t-replica">0</span><small>replica</small></div>
+          <div><span id="t-overflow">0</span><small>overflow</small></div>
+          <div><span id="t-rejected">0</span><small>rejected</small></div>
+        </div>
+        <p id="burst-note-pg" class="hint"></p>
+      </section>
+      <section class="card" aria-labelledby="tel-h">
+        <h2 id="tel-h">Telemetry (last 60 s)</h2>
+        <pre id="rollup" class="reply">-</pre>
+        <button class="btn small" id="rollup-go" type="button">Refresh</button>
+      </section>
+    </div>
+  </div>
+</section>
+{% endblock %}

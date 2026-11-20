@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Sign up - PackServe{% endblock %}
+{% block content %}
+<section class="wrap narrow">
+  <h1>Create your tenant</h1>
+  <p id="plan-summary" class="card"></p>
+  <form id="signup-form">
+    <label for="name">Your name</label><input id="name" name="name" autocomplete="name" required>
+    <label for="email">Work email</label><input id="email" name="email" type="email" autocomplete="email" required>
+    <label for="company">Company</label><input id="company" name="company" autocomplete="organization" required>
+    <p id="signup-error" class="error" role="alert" hidden></p>
+    <button class="btn primary" type="submit">Create tenant and API key</button>
+  </form>
+  <section id="result" hidden aria-live="polite">
+    <h2>You're in</h2>
+    <p id="result-mode" class="muted"></p>
+    <p><strong>Your API key. It is shown once, so copy it now.</strong></p>
+    <div class="keybox"><code id="api-key"></code><button class="btn" id="copy-key" type="button">Copy</button></div>
+    <h3>Call the gateway</h3>
+    <div class="tabs" role="group" aria-label="Snippet language"><button class="btn small" data-snip="curl" type="button">curl</button> <button class="btn small" data-snip="python" type="button">Python</button></div>
+    <pre id="snippet" tabindex="0"></pre>
+    <p><a class="btn primary" href="/playground">Open the playground</a></p>
+  </section>
+</section>
+{% endblock %}

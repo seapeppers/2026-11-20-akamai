@@ -1,0 +1,26 @@
+id: S11-unhealthy-excluded
+title: A failed (unhealthy) replica is excluded from routing
+intent: >
+  Three requests are packed onto replica R, making R the busiest (packing would keep choosing it). R is then
+  faulted with fail=true. After the stack marks it unhealthy (metadata healthy=false, within 15 s) none of
+  12 new requests may be routed to R and all must succeed on other replicas. Clearing the fault makes R
+  healthy again.
+tags: [fault, health, core]
+requires: {qwen_replicas: 2}
+steps:
+  - {action: traffic, name: inflight, tenant: interactive, model: qwen3-8-27b, count: 3, max_tokens: 400, background: true, tolerate_errors: true}
+  - {action: fault, replica: "{{ g.inflight.top_replica }}", fail: true}
+  - action: wait
+    name: unhealthy-detected
+    until: {service: metadata, url_path: /v1/replicas, path: "[id={{ g.inflight.top_replica }}].healthy", op: "==", value: false, timeout_s: 15}
+  - {action: wait, seconds: 1.5}
+  - {action: traffic, name: after, tenant: batch, model: qwen3-8-27b, count: 12, concurrency: 3, max_tokens: 8}
+  - {action: fault, replica: "{{ g.inflight.top_replica }}", fail: false}
+  - action: wait
+    name: healthy-again
+    until: {service: metadata, url_path: /v1/replicas, path: "[id={{ g.inflight.top_replica }}].healthy", op: "==", value: true, timeout_s: 20}
+  - action: check
+    checks:
+      - {type: fact, name: unhealthy-detected-within-10s, severity: warn, path: unhealthy-detected.elapsed_s, op: "<=", value: 10}
+      - {type: in_set, name: no-request-on-failed-replica, on: after, field: replica, negate: true, values: ["{{ g.inflight.top_replica }}"]}
+      - {type: all, name: all-served-elsewhere, on: after, expect: {route: replica, status: 200, complete: true}}

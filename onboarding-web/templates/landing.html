@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="hero">
+  <h1>Managed LLM inference with a reserved GPU pool and serverless burst</h1>
+  <p class="lead">Reserve a pool of RTX PRO 6000 Blackwell GPU Linodes sized for your steady traffic. A PackServe-style gateway packs requests onto as few replicas as possible while holding a <strong>median per-token latency (TPOT)</strong> target. When a spike exceeds the pool, burst-eligible models overflow to Akamai Inference serverless.</p>
+  <p><a class="btn primary" href="/use-cases">Find your use case</a> <a class="btn" href="/plan">Build a plan</a> <a class="btn" href="/playground">Try the playground</a></p>
+</section>
+
+<section class="wrap">
+  <h2>How it works</h2>
+  <figure>
+  <svg viewBox="0 0 760 250" role="img" aria-labelledby="dg-t dg-d" class="diagram">
+    <title id="dg-t">Request flow diagram</title>
+    <desc id="dg-d">Clients call the gateway with an API key. The gateway packs requests onto reserved GPU replicas if they can meet the TPOT target; otherwise burst-eligible models overflow to serverless, and anything else is rejected with Retry-After.</desc>
+    <defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#475569"/></marker></defs>
+    <g font-size="14" font-family="system-ui,sans-serif">
+      <rect x="10" y="95" width="110" height="60" rx="8" fill="#e0f2fe" stroke="#0369a1"/><text x="65" y="130" text-anchor="middle">Your app</text>
+      <rect x="190" y="85" width="150" height="80" rx="8" fill="#ede9fe" stroke="#6d28d9"/><text x="265" y="120" text-anchor="middle">Packing gateway</text><text x="265" y="140" text-anchor="middle" font-size="12">TPOT-aware, prefix-aware</text>
+      <rect x="450" y="15" width="300" height="95" rx="8" fill="#dcfce7" stroke="#15803d"/><text x="600" y="40" text-anchor="middle">Reserved pool (Blackwell x4 Linodes)</text>
+      <rect x="470" y="55" width="60" height="35" rx="5" fill="#fff" stroke="#15803d"/><rect x="545" y="55" width="60" height="35" rx="5" fill="#fff" stroke="#15803d"/><rect x="620" y="55" width="60" height="35" rx="5" fill="#fff" stroke="#15803d"/><text x="500" y="77" text-anchor="middle" font-size="11">replica</text><text x="575" y="77" text-anchor="middle" font-size="11">replica</text><text x="650" y="77" text-anchor="middle" font-size="11">replica</text>
+      <rect x="450" y="135" width="300" height="50" rx="8" fill="#fef3c7" stroke="#b45309"/><text x="600" y="157" text-anchor="middle">Akamai Inference serverless</text><text x="600" y="175" text-anchor="middle" font-size="12">burst-eligible models only</text>
+      <rect x="450" y="205" width="300" height="36" rx="8" fill="#fee2e2" stroke="#b91c1c"/><text x="600" y="228" text-anchor="middle">429 + Retry-After (no capacity)</text>
+      <path d="M120 125H188" stroke="#475569" stroke-width="2" marker-end="url(#ar)"/>
+      <path d="M340 110L448 70" stroke="#15803d" stroke-width="2" marker-end="url(#ar)"/><text x="372" y="80" font-size="12" fill="#15803d">1. pack</text>
+      <path d="M340 140L448 158" stroke="#b45309" stroke-width="2" marker-end="url(#ar)"/><text x="360" y="162" font-size="12" fill="#b45309">2. overflow</text>
+      <path d="M320 165L448 222" stroke="#b91c1c" stroke-width="2" stroke-dasharray="4 3" marker-end="url(#ar)"/><text x="330" y="212" font-size="12" fill="#b91c1c">3. reject</text>
+    </g>
+  </svg>
+  <figcaption>Every response carries <code>X-PackServe-Route</code> and <code>X-PackServe-Reason</code> so you can see which path your request took.</figcaption>
+  </figure>
+  <ol class="steps">
+    <li><strong>Pack.</strong> The gateway predicts each replica's per-token latency and sends the request to the busiest replica that still meets your TPOT target, so the others stay free (and can be released).</li>
+    <li><strong>Burst.</strong> If the pool is full and your model is also in the serverless catalog, the request overflows to Akamai Inference.</li>
+    <li><strong>Reject.</strong> Otherwise you get a fast <code>429</code> with <code>Retry-After</code> instead of a long queue.</li>
+  </ol>
+</section>
+
+<section class="wrap two">
+  <div class="card good">
+    <h2>What we guarantee</h2>
+    <ul>
+      <li>Routing is tuned for a <strong>median TPOT target</strong>: 30 ms or 50 ms tiers.</li>
+      <li>Every routing decision is visible in response headers.</li>
+      <li>Burst applies only where you enabled it and only to models that exist in the serverless catalog, so overflow answers come from the same model.</li>
+      <li>Prompts are not stored by telemetry; only aggregate timings are.</li>
+    </ul>
+  </div>
+  <div class="card warn">
+    <h2>What we don't</h2>
+    <ul>
+      <li><strong>No tail-latency promise.</strong> In the research this builds on, P90 TPOT ran well above the median target.</li>
+      <li><strong>Time-to-first-token may rise</strong> when packing is aggressive.</li>
+      <li><strong>Pool-only models never burst.</strong> The 230B-class model has no serverless equivalent; excess requests are rejected.</li>
+      <li>Serverless capacity, rate limits and pricing are <strong>unpublished (beta)</strong>; burst is best effort.</li>
+      <li>GPU billing is <strong>hourly, rounded up</strong>; scaling down early saves nothing for the current hour.</li>
+      <li>In this demo, the GPU replicas are <span class="sim">SIMULATED</span>.</li>
+    </ul>
+  </div>
+</section>
+{% endblock %}

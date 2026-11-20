@@ -1,0 +1,23 @@
+id: S14-two-gateways-no-double-booking
+title: Two gateways sharing state via metadata do not double-book a replica
+intent: >
+  Gateway #1 (:8080) places 30 long requests; after the state sync (>=1 s) gateway #2 (:8081) places 30
+  more for the same 30 ms tenant. Combined 60 > cap30 (~41-45) so one replica can legally hold at most
+  ~cap30. If gateway #2 were blind to gateway #1's bookings it would pile all 30 onto the same replica
+  (~60). Expected: max requests on one replica <= cap30_hi+4, >= cap30_lo-4 (packing still happens), and
+  >=2 replicas used. Both gateways' decisions must be visible (2 distinct gateway_id values).
+tags: [multi-gateway, state, core]
+requires: {qwen_replicas: 2, gateway2: true}
+steps:
+  - {action: traffic, name: gw1, tenant: interactive, model: qwen3-8-27b, count: 30, max_tokens: "{{ calc.hold_max_tokens }}", background: true}
+  - action: wait
+    name: state-synced
+    until: {service: metadata, url_path: /v1/replicas, path: "[*].running|sum", op: ">=", value: 25, timeout_s: 10}
+  - {action: wait, seconds: 1.5}
+  - {action: traffic, name: gw2, gateway: 2, tenant: interactive, model: qwen3-8-27b, count: 30, max_tokens: "{{ calc.hold_max_tokens }}", background: true}
+  - action: check
+    checks:
+      - {type: max_per_value, name: no-replica-over-30ms-capacity, field: replica, op: "<=", value: "{{ calc.cap30_hi }}", tol: 4}
+      - {type: max_per_value, name: packing-preserved-across-gateways, field: replica, op: ">=", value: "{{ calc.cap30_lo }}", tol: 4}
+      - {type: distinct, name: spills-to-second-replica, field: replica, op: ">=", value: 2}
+      - {type: distinct, name: both-gateways-logged-decisions, field: gateway_id, op: "==", value: 2}

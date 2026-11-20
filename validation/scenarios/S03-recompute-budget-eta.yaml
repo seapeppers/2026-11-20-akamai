@@ -1,0 +1,37 @@
+id: S03-recompute-budget-eta
+title: Cache-holding but TPOT-overloaded replica loses; recompute budget eta=0.5 prunes the weak-cache replica
+intent: >
+  Three qwen replicas hold different fractions of a 2048-token prefix: A=qlast 100% (but overloaded with 60
+  direct decoding requests, over the 30 ms TPOT limit), B=q2 21/32 blocks (recompute ratio ~0.33, within
+  eta), C=q1 8/32 blocks (ratio ~0.74, outside eta) with 5 decoding requests (so C would win packing if the
+  budget filter did not remove it). Expected for a 30 ms tenant: capacity=N, budget=2 (A,B), tpot=1 (B);
+  routed to B, reason packed, cache_hit ~1344 tokens. Ratios come from validation.model (calc.ratio_b/c).
+tags: [cache, budget, tpot, core]
+requires: {qwen_replicas: 3}
+steps:
+  - {action: direct_prime, replica: qlast, prompt: {kind: prefix_only, prefix_blocks: "{{ calc.prefix_blocks }}", seed: eta}}
+  - {action: direct_prime, replica: q2, prompt: {kind: prefix_only, prefix_blocks: "{{ calc.b_blocks }}", seed: eta}}
+  - {action: direct_prime, replica: q1, prompt: {kind: prefix_only, prefix_blocks: "{{ calc.c_blocks }}", seed: eta}}
+  - action: wait
+    name: sync-cache
+    until: {service: metadata, url_path: /v1/replicas, path: "[id={{ q1.id }}].cached_block_hashes|len", op: ">=", value: 8, timeout_s: 15}
+  - action: direct_load
+    name: load
+    loads:
+      - {replica: qlast, count: "{{ calc.over30 }}"}
+      - {replica: q1, count: 5}
+    max_tokens: 500
+    settle_s: 3
+  - action: traffic
+    name: probe
+    tenant: interactive
+    model: qwen3-8-27b
+    count: 1
+    max_tokens: 8
+    prompt: {kind: shared_prefix, prefix_blocks: "{{ calc.prefix_blocks }}", suffix_chars: 80, seed: eta}
+  - action: check
+    checks:
+      - {type: fact, name: eta-model-sanity, path: "calc.eta_ok", op: "==", value: true}
+      - {type: all, name: routed-to-B-partial-cache-replica, on: probe, expect: {route: replica, reason: packed, replica: "{{ q2.id }}"}}
+      - {type: all, name: candidate-counts-capacity-N-budget-2-tpot-1, on: probe, expect: {cand_capacity: "{{ n_qwen }}", cand_budget: 2, cand_tpot: 1}}
+      - {type: stat, name: cache-hit-about-21-blocks, on: probe, field: cache_hit_tokens, agg: min, op: between, value: [1280, 1410]}

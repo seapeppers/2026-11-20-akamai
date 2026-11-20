@@ -1,0 +1,20 @@
+id: S05-fallback-all-exceed-tpot
+title: When every replica would exceed the TPOT target, route to the cache-aware least-loaded replica (fallback)
+intent: >
+  Each qwen replica is pre-loaded (directly) with 56-62 decoding requests, so a 30 ms tenant's predicted TPOT
+  exceeds 30 ms everywhere (calc.over30 level) while the capacity guard (running < 64) and recompute budget
+  (no cache anywhere) still pass. Expected: reason=fallback, candidates tpot=0, budget>=1, routed to the
+  LEAST loaded replica (q2: 56). Contrast: a 50 ms tenant in the same state packs onto the MOST loaded
+  replica (q1: 62) because 63 requests still fit under 50 ms.
+tags: [fallback, tpot, core]
+requires: {qwen_replicas: 2}
+steps:
+  - {action: direct_load, name: load, target: qwen, counts: [62, 56], count: 60, max_tokens: 500, settle_s: 3}
+  - {action: traffic, name: tight, tenant: interactive, model: qwen3-8-27b, count: 1, max_tokens: 8}
+  - {action: traffic, name: loose, tenant: batch, model: qwen3-8-27b, count: 1, max_tokens: 8}
+  - action: check
+    checks:
+      - {type: all, name: tight-falls-back-to-least-loaded, on: tight, expect: {route: replica, reason: fallback, replica: "{{ q2.id }}"}}
+      - {type: all, name: tight-candidates-tpot-zero, on: tight, expect: {cand_capacity: "{{ n_qwen }}", cand_tpot: 0}}
+      - {type: stat, name: tight-predicted-tpot-exceeds-target, on: tight, field: predicted_tpot_ms, agg: min, op: ">", value: 30}
+      - {type: all, name: loose-packs-onto-busiest-replica, on: loose, expect: {route: replica, reason: packed, replica: "{{ q1.id }}"}}

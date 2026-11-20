@@ -1,0 +1,18 @@
+id: S07-reject-burst-disabled
+title: Pool full + tenant burst-disabled is rejected with burst_disabled (429 + Retry-After), serverless untouched
+intent: >
+  Same full pool as S06, but the batch tenant has burst_enabled=false. The model (qwen3-8-27b) is
+  burst-eligible, so the only reason to reject is the tenant setting: route=rejected, reason=burst_disabled,
+  HTTP 429, Retry-After present. The serverless mock must not receive the request.
+tags: [reject, core]
+requires: {qwen_replicas: 1}
+steps:
+  - {action: serverless, snapshot: before}
+  - {action: direct_load, name: fill, target: qwen, count: max, max_tokens: 500, settle_s: 3}
+  - {action: traffic, name: probe, tenant: batch, model: qwen3-8-27b, count: 3, concurrency: 1, max_tokens: 8}
+  - {action: serverless, snapshot: after}
+  - action: check
+    checks:
+      - {type: all, name: rejected-burst-disabled, on: probe, expect: {route: rejected, reason: burst_disabled, status: 429, retry_after: {">=": 0}, replica: null}}
+      - {type: all, name: error-body-openai-style, severity: warn, on: probe, expect: {error_message: {"!=": null}}}
+      - {type: fact, name: serverless-not-called, path: after.json, op: "==", value: "{{ fact.before.json }}", severity: warn}

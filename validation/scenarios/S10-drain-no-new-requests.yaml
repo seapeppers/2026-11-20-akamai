@@ -1,0 +1,24 @@
+id: S10-drain-no-new-requests
+title: A draining replica gets no new requests; its in-flight requests complete
+intent: >
+  Four long requests are packed onto one replica R. R is marked draining through the metadata API. Once the
+  gateway observes it, 10 new requests must all avoid R (even though packing would otherwise prefer the busy
+  R), while R's 4 in-flight streams finish normally (HTTP 200, [DONE], roughly max_tokens chunks).
+tags: [drain, core]
+requires: {qwen_replicas: 2}
+steps:
+  - {action: traffic, name: inflight, tenant: interactive, model: qwen3-8-27b, count: 4, max_tokens: 600, background: true, pace_ms: 100}
+  - {action: wait, seconds: 1.5}
+  - {action: metadata, op: drain, replica: "{{ g.inflight.top_replica }}"}
+  - action: wait
+    name: drain-visible
+    until: {service: metadata, url_path: /v1/replicas, path: "[id={{ g.inflight.top_replica }}].draining", op: "==", value: true, timeout_s: 10}
+  - {action: wait, seconds: 1.5}
+  - {action: traffic, name: after, tenant: batch, model: qwen3-8-27b, count: 10, concurrency: 2, max_tokens: 8}
+  - {action: await, groups: [inflight], timeout_s: 120}
+  - action: check
+    checks:
+      - {type: in_set, name: no-new-request-on-draining-replica, on: after, field: replica, negate: true, values: ["{{ g.inflight.top_replica }}"]}
+      - {type: all, name: new-requests-still-served-by-other-replicas, on: after, expect: {route: replica, status: 200}}
+      - {type: all, name: inflight-requests-completed, on: inflight, expect: {status: 200, complete: true}}
+      - {type: stat, name: inflight-streams-not-truncated, severity: warn, on: inflight, field: chunks, agg: min, op: ">=", value: 300}

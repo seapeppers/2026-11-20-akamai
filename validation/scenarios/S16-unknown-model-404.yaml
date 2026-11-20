@@ -1,0 +1,19 @@
+id: S16-unknown-model-404
+title: Unknown model gets 404 unknown_model; /v1/models lists the tenant's models
+intent: >
+  A valid tenant asking for a model id that does not exist gets HTTP 404, route=rejected,
+  reason=unknown_model. GET /v1/models with a valid key returns the OpenAI list shape including
+  qwen3-8-27b. (Whether a tenant asking for a real model it is not entitled to is 403/404 is NOT specified;
+  that is recorded as a warn-only observation.)
+tags: [auth, core]
+requires: {qwen_replicas: 1}
+steps:
+  - {action: traffic, name: unknown, tenant: interactive, model: no-such-model-xyz, count: 2, max_tokens: 4}
+  - {action: traffic, name: not-entitled, tenant: interactive, model: packserve-large-230b, count: 1, max_tokens: 4}
+  - {action: observe, name: models, tenant: interactive, service: gateway, url_path: /v1/models}
+  - action: check
+    checks:
+      - {type: all, name: 404-unknown-model, on: unknown, expect: {status: 404, route: rejected, reason: unknown_model, replica: null}}
+      - {type: fact, name: models-endpoint-200, path: models.status, op: "==", value: 200}
+      - {type: fact, name: models-lists-qwen, path: "models.json.data[*].id", op: contains, value: qwen3-8-27b}
+      - {type: all, name: unentitled-model-is-refused-observation, severity: warn, on: not-entitled, expect: {status: [403, 404]}}

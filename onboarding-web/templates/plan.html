@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Plan builder - PackServe{% endblock %}
+{% block content %}
+<section class="wrap">
+  <h1>Plan builder</h1>
+  <p id="plan-persona" class="muted"></p>
+  <div class="cols">
+    <form id="plan-form" class="card" aria-label="Plan settings">
+      <fieldset><legend>Service</legend>
+        <label for="model">Model</label>
+        <select id="model"></select>
+        <p id="model-note" class="hint"></p>
+        <label for="tpot">TPOT tier (median time per output token)</label>
+        <select id="tpot"><option value="30">30 ms (interactive)</option><option value="50">50 ms (balanced)</option></select>
+        <p class="hint">Median target only. Tail latency (P90/P99) is not promised.</p>
+        <label for="replicas">Reserved replicas (Blackwell x4 Linodes)</label>
+        <input id="replicas" type="number" min="1" max="50" step="1">
+        <label class="check"><input id="burst" type="checkbox"> Burst to serverless when the pool is full</label>
+        <p id="burst-note" class="hint"></p>
+      </fieldset>
+      <fieldset><legend>Traffic</legend>
+        <label for="base">Expected baseline requests/s</label><input id="base" type="number" min="0" step="0.5">
+        <label for="peak">Expected peak requests/s</label><input id="peak" type="number" min="0" step="0.5">
+        <label for="peakh">Hours per day at peak</label><input id="peakh" type="number" min="0" max="24" step="0.25">
+        <label for="tokens">Tokens per request (prompt + output)</label><input id="tokens" type="number" min="50" step="50">
+      </fieldset>
+      <fieldset><legend>Editable assumptions</legend>
+        <label for="rpr">Sustainable requests/s per replica</label><input id="rpr" type="number" min="0.5" step="0.5">
+        <p class="hint">Assumed. Measure with the profiler on your own prompts.</p>
+        <label for="gpu">GPU price, $/hr (Blackwell x4)</label><input id="gpu" type="number" min="0" step="0.5">
+        <label for="sp">Serverless price, $ per million tokens</label><input id="sp" type="number" min="0" step="0.05">
+        <p class="hint"><strong>Unknown.</strong> Akamai Inference is in beta (free during beta); per-token pricing is not published. This is your own guess.</p>
+      </fieldset>
+    </form>
+    <div>
+      <section class="card" aria-live="polite" aria-labelledby="cost-h">
+        <h2 id="cost-h">Monthly cost estimate</h2>
+        <div id="cost" class="costs"></div>
+        <ul class="hint" id="cost-notes"></ul>
+      </section>
+      <p><a class="btn primary" href="/signup" id="to-signup">Continue to sign up</a></p>
+    </div>
+  </div>
+</section>
+{% endblock %}

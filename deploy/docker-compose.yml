@@ -1,0 +1,37 @@
+# Optional and UNTESTED (experimental). The supported path is deploy/run-local.sh. Everything here is SIMULATED (no GPUs).
+# The autoscaler uses the sim provider, which spawns replica subprocesses INSIDE its container.
+x-py: &py
+  image: ghcr.io/astral-sh/uv:python3.12-bookworm-slim
+  working_dir: /app
+  volumes: ["..:/app"]
+  environment:
+    PACKSERVE_METADATA_URL: http://metadata:8090
+    PACKSERVE_TELEMETRY_URL: http://telemetry:8060
+    AKAMAI_BASE_URL: http://serverless:8099/v1
+services:
+  telemetry:
+    <<: *py
+    command: uv run python -m packserve.telemetry --host 0.0.0.0
+    ports: ["8060:8060"]
+  metadata:
+    <<: *py
+    command: uv run python -m packserve.metadata --host 0.0.0.0
+    ports: ["8090:8090"]
+  serverless:
+    <<: *py
+    command: uv run python -m packserve.serverless_mock --host 0.0.0.0
+    ports: ["8099:8099"]
+  gateway:
+    <<: *py
+    command: uv run python -m packserve.gateway --host 0.0.0.0 --port 8080 --id gw1
+    ports: ["8080:8080"]
+    depends_on: [metadata, telemetry, serverless]
+  autoscaler:
+    <<: *py
+    # replicas listen on 127.0.0.1 inside this container; the gateway reaches them only if it shares
+    # the network namespace, so run the gateway and autoscaler together in compose by using host networking.
+    network_mode: host
+    environment:
+      PACKSERVE_METADATA_URL: http://127.0.0.1:8090
+      PACKSERVE_TELEMETRY_URL: http://127.0.0.1:8060
+    command: uv run python -m packserve.autoscaler --provider sim --host 0.0.0.0

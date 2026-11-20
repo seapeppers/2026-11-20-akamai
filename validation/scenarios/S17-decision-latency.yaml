@@ -1,0 +1,15 @@
+id: S17-decision-latency
+title: Scheduler decision latency p50 < 2 ms
+intent: >
+  PackServe reports ~1.9 ms per decision. Send 300 short requests (8 in flight) against an idle pool and
+  read RouteDecision.decision_us from /admin/decisions: p50 must be < 2000 us (p99 < 10 ms is a warn-only
+  expectation). All 300 decisions must be present.
+tags: [latency, core]
+requires: {qwen_replicas: 1}
+steps:
+  - {action: traffic, name: load, tenant: interactive, model: qwen3-8-27b, count: 300, concurrency: 8, max_tokens: 2}
+  - action: check
+    checks:
+      - {type: stat, name: decisions-recorded, on: load, field: decision_us, agg: count, op: ">=", value: 290}
+      - {type: stat, name: decision-p50-under-2ms, on: load, field: decision_us, agg: p50, op: "<", value: 2000}
+      - {type: stat, name: decision-p99-under-10ms, severity: warn, on: load, field: decision_us, agg: p99, op: "<", value: 10000}

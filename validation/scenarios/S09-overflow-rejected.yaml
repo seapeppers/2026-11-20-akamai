@@ -1,0 +1,24 @@
+id: S09-overflow-rejected
+title: Serverless 429 / 5xx during overflow -> overflow_rejected with Retry-After; recovers afterwards
+intent: >
+  Full qwen pool + burst-enabled tenant, but the serverless mock is throttled (tokens_per_minute=300 with a drained bucket -> 429; NOTE a limit below one request's cost yields 400, not 429)
+  and then failing (fail_rate=1.0 -> 5xx). Contract: the gateway rejects with route=rejected,
+  reason=overflow_rejected, HTTP 429, Retry-After > 0 (never leaks the upstream 5xx, never routes to a
+  replica). After the mock is restored the same request overflows successfully.
+tags: [overflow, reject, core]
+requires: {qwen_replicas: 1}
+steps:
+  - {action: direct_load, name: fill, target: qwen, count: max, max_tokens: 800, settle_s: 3}
+  - {action: serverless, config: {tokens_per_minute: 300, cold_start_ms: 0}}
+  - {action: traffic, name: prime, tenant: interactive, model: qwen3-8-27b, count: 1, concurrency: 1, max_tokens: 100}
+  - {action: traffic, name: throttled, tenant: interactive, model: qwen3-8-27b, count: 2, concurrency: 1, max_tokens: 100}
+  - {action: serverless, reset: true, config: {fail_rate: 1.0, cold_start_ms: 0}}
+  - {action: traffic, name: failing, tenant: interactive, model: qwen3-8-27b, count: 2, concurrency: 1, max_tokens: 8}
+  - {action: serverless, reset: true, config: {cold_start_ms: 0}}
+  - {action: traffic, name: recovered, tenant: interactive, model: qwen3-8-27b, count: 1, concurrency: 1, max_tokens: 8}
+  - action: check
+    checks:
+      - {type: all, name: prime-request-overflowed, on: prime, expect: {route: overflow, status: 200}}
+      - {type: all, name: throttled-overflow-rejected, on: throttled, expect: {route: rejected, reason: overflow_rejected, status: 429, retry_after: {">": 0}}}
+      - {type: all, name: failing-overflow-rejected, on: failing, expect: {route: rejected, reason: overflow_rejected, status: 429, retry_after: {">": 0}}}
+      - {type: all, name: recovered-overflows, on: recovered, expect: {route: overflow, reason: overflow, status: 200, complete: true}}

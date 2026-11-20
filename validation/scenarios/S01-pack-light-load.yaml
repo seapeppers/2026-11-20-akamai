@@ -1,0 +1,20 @@
+id: S01-pack-light-load
+title: Light load packs onto the busiest admissible replica
+intent: >
+  With several idle identical replicas and a load far below the 30 ms TPOT limit, every request after the
+  first must be packed onto the replica that already has decoding requests (PackServe packing: max decoding
+  count), not spread across the pool. All routing must carry reason=packed.
+tags: [packing, core]
+requires: {qwen_replicas: 2}
+steps:
+  - {action: traffic, name: first, tenant: interactive, model: qwen3-8-27b, count: 1, max_tokens: 400, background: true}
+  - {action: wait, seconds: 1.0}
+  - {action: traffic, name: follow, tenant: interactive, model: qwen3-8-27b, count: 8, max_tokens: 400, background: true, pace_ms: 150}
+  - action: check
+    checks:
+      - {type: all, name: first-request-packed-on-a-replica, on: first, expect: {route: replica, reason: packed}}
+      - {type: stat, name: first-sees-all-replicas-as-candidates, on: first, field: cand_capacity, agg: min, op: ">=", value: "{{ n_qwen }}"}
+      - {type: all, name: followers-packed, on: follow, expect: {route: replica, reason: packed}}
+      - {type: in_set, name: followers-land-on-the-first-requests-replica, on: follow, field: replica, values: ["{{ g.first.top_replica }}"]}
+      - {type: distinct, name: one-replica-used-overall, field: replica, op: "==", value: 1}
+      - {type: stat, name: predicted-tpot-under-30ms, field: predicted_tpot_ms, agg: max, op: "<=", value: 30.01}

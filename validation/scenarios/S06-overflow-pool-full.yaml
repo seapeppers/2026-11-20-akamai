@@ -1,0 +1,20 @@
+id: S06-overflow-pool-full
+title: Pool full + burst-enabled tenant + burst-eligible model overflows to serverless
+intent: >
+  Every qwen replica is filled to max_running with direct decoding requests, so the capacity guard leaves no
+  candidate (capacity=0). The interactive tenant (burst_enabled) asking for qwen3-8-27b (burst-eligible) must
+  be served by the serverless mock: route=overflow, reason=overflow, HTTP 200 with a streamed completion, no
+  X-PackServe-Replica header, and the mock's stats change.
+tags: [overflow, core]
+requires: {qwen_replicas: 1}
+steps:
+  - {action: serverless, config: {cold_start_ms: 200}, snapshot: before}
+  - {action: direct_load, name: fill, target: qwen, count: max, max_tokens: 500, settle_s: 3}
+  - {action: traffic, name: probe, tenant: interactive, model: qwen3-8-27b, count: 3, concurrency: 1, max_tokens: 8}
+  - {action: serverless, snapshot: after}
+  - action: check
+    checks:
+      - {type: all, name: overflowed, on: probe, expect: {route: overflow, reason: overflow, status: 200, complete: true}}
+      - {type: all, name: no-replica-header, on: probe, expect: {replica: null, cand_capacity: 0}}
+      - {type: stat, name: streamed-tokens, on: probe, field: chunks, agg: min, op: ">=", value: 1}
+      - {type: fact, name: serverless-stats-changed, severity: warn, path: after.json, op: "!=", value: "{{ fact.before.json }}"}

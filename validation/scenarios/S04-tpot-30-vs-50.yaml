@@ -1,0 +1,27 @@
+id: S04-tpot-30-vs-50
+title: A 30 ms tenant stops packing at the TPOT limit and spills; a 50 ms tenant keeps packing
+intent: >
+  50 near-simultaneous long-running requests. From validation.model (virtual-blackwell-x4 profile), a single
+  replica can hold cap30 ~41-45 requests under a 30 ms predicted TPOT but all 50 under 50 ms (the 50 ms
+  limit is not reached before max_running=64). So the 30 ms tenant must fill one replica to ~cap30 and place
+  the remainder elsewhere (>=2 replicas, no replica above cap30_hi+2), while the 50 ms tenant packs all 50
+  onto a single replica.
+tags: [tpot, packing, core]
+requires: {qwen_replicas: 2}
+steps:
+  - {action: traffic, name: tight, tenant: interactive, model: qwen3-8-27b, count: 50, max_tokens: "{{ calc.hold_max_tokens }}", background: true}
+  - action: check
+    checks:
+      - {type: max_per_value, name: tight-never-exceeds-30ms-capacity, on: tight, field: replica, op: "<=", value: "{{ calc.cap30_hi }}", tol: 2}
+      - {type: max_per_value, name: tight-still-packs-to-near-capacity, on: tight, field: replica, op: ">=", value: "{{ calc.cap30_lo }}", tol: 3}
+      - {type: distinct, name: tight-spills-to-second-replica, on: tight, field: replica, op: ">=", value: 2}
+      - {type: stat, name: tight-predicted-tpot-within-30, on: tight, where: {reason: packed}, field: predicted_tpot_ms, agg: max, op: "<=", value: 30.01}
+  - {action: cancel, groups: [tight]}
+  - {action: wait, idle: true, timeout_s: 90}
+  - {action: custom, hook: gateway_reset}
+  - {action: traffic, name: loose, tenant: batch, model: qwen3-8-27b, count: 50, max_tokens: "{{ calc.hold_max_tokens }}", background: true}
+  - action: check
+    checks:
+      - {type: max_per_value, name: loose-all-on-one-replica, on: loose, field: replica, op: ">=", value: 50, tol: 2}
+      - {type: all, name: loose-packed, on: loose, where: {replica: "{{ g.loose.top_replica }}"}, expect: {reason: packed}}
+      - {type: stat, name: loose-predicted-tpot-above-30-but-within-50, on: loose, field: predicted_tpot_ms, agg: max, op: between, value: [30, 50]}

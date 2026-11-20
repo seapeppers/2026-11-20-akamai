@@ -1,0 +1,18 @@
+id: S13-scaledown-drain-billing-hold
+title: Scale-down drains the least-loaded replica, never kills in-flight work, and holds until the billed-hour boundary
+intent: >
+  Eight requests are packed onto the busiest replica B. The autoscaler is asked to scale to N-1. Expected:
+  exactly one replica (not B) is marked draining, B's in-flight requests complete, the drained replica is
+  parked in held_for_billing (not deleted) until the billed-hour boundary (sim_hour_s since its created_at),
+  and only then deleted (skipped with --fast). The runner restores the original replica count afterwards.
+tags: [autoscaler, drain, billing, slow]
+requires: {qwen_replicas: 2, autoscaler: true}
+timeout_s: 420
+steps:
+  - {action: traffic, name: busy, tenant: batch, model: qwen3-8-27b, count: 8, max_tokens: 600, background: true, pace_ms: 50}
+  - {action: autoscaler, op: scale, replicas: "{{ n_qwen - 1 }}", wait_s: 60}
+  - {action: custom, hook: billing_hold, args: {replica: auto, busiest: "{{ g.busy.top_replica }}"}}
+  - {action: await, groups: [busy], timeout_s: 120}
+  - action: check
+    checks:
+      - {type: all, name: busy-replicas-inflight-requests-survived, on: busy, expect: {status: 200, complete: true}}

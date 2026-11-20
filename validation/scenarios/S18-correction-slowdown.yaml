@@ -1,0 +1,24 @@
+id: S18-correction-slowdown
+title: Online correction factor learns a 2x-slow replica (predicted TPOT rises)
+intent: >
+  A replica that is injected with slowdown=2.0 produces measured TPOT ~2x the model. PackServe's online
+  multiplicative EMA correction (w=0.02, factor clip [1,2]) must raise the gateway's predicted TPOT for that
+  replica: the mean predicted TPOT of the last 20 of 120 requests (steady batch ~6) must be >= 1.3x that of
+  requests 6-26 (similar batch, before learning). Correction state is cleared by the runner's gateway reset.
+tags: [correction, core]
+requires: {qwen_replicas: 1}
+timeout_s: 300
+steps:
+  - {action: traffic, name: probe, tenant: batch, model: qwen3-8-27b, count: 1, max_tokens: 4}
+  - {action: fault, replica: "{{ g.probe.top_replica }}", slowdown: 2.0}
+  - {action: traffic, name: slow, tenant: batch, model: qwen3-8-27b, count: 120, concurrency: 6, max_tokens: 24}
+  - {action: observe, name: gwstate, service: gateway, url_path: /admin/state}
+  - action: check
+    checks:
+      - type: compare_stat
+        name: predicted-tpot-rises-after-learning
+        a: {on: slow, where: {replica: "{{ g.probe.top_replica }}"}, slice: "-20:", field: predicted_tpot_ms, agg: mean}
+        b: {on: slow, where: {replica: "{{ g.probe.top_replica }}"}, slice: "6:26", field: predicted_tpot_ms, agg: mean}
+        op: ">="
+        value: 1.3
+      - {type: fact, name: gateway-exposes-correction-state, severity: warn, path: gwstate.json.correction, op: exists}
